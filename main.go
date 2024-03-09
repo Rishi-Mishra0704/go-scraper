@@ -16,14 +16,12 @@ func main() {
 	defer file.Close()
 
 	c := colly.NewCollector(
-		colly.AllowedDomains("www.wikipedia.org"),
+		colly.AllowedDomains("www.wikipedia.org", "example.com"),
 	)
 
 	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
 		link := e.Attr("href")
 		text := e.Text
-		fmt.Println("Link found:", link)
-		fmt.Println("Text:", text)
 		_, err := file.WriteString(fmt.Sprintf("Link found: %s\nText: %s\n\n", link, text))
 		if err != nil {
 			fmt.Println("Error writing to file:", err)
@@ -37,4 +35,5 @@ func main() {
 	})
 
 	c.Visit("https://www.wikipedia.org")
+	c.Visit("https://example.com")
 }

@@ -2,7 +2,11 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/gocolly/colly"
 )
@@ -22,33 +26,65 @@ func main() {
 	}
 	defer textFile.Close()
 
-	c := colly.NewCollector(
-		colly.AllowedDomains("www.wikipedia.org", "example.com"),
-	)
+	imageDir := "images"
+	if _, err := os.Stat(imageDir); os.IsNotExist(err) {
+		os.Mkdir(imageDir, 0755)
+	}
 
+	c := colly.NewCollector()
+
+	// Find and extract phone number
+	c.OnHTML("a[href^='tel:']", func(e *colly.HTMLElement) {
+		phoneNumber := e.Text
+		fmt.Println("Phone Number:", phoneNumber)
+		textFile.WriteString(fmt.Sprintf("Phone No: %s\n", phoneNumber))
+	})
+
+	// Find and extract link
 	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
 		link := e.Attr("href")
-		text := e.Text
-		_, err := linksFile.WriteString(fmt.Sprintf("Link found: %s\nText: %s\n\n", link, text))
-		if err != nil {
-			fmt.Println("Error writing to links file:", err)
-		}
-
-		e.Request.Visit(link)
+		fmt.Println("Link:", link)
+		linksFile.WriteString(fmt.Sprintf("%s\n", link))
 	})
 
-	c.OnHTML("p", func(e *colly.HTMLElement) {
-		text := e.Text
-		_, err := textFile.WriteString(fmt.Sprintf("Text from <p> tag: %s\n\n", text))
-		if err != nil {
-			fmt.Println("Error writing to text file:", err)
-		}
+	// Find and extract image URL
+	c.OnHTML("img[src]", func(e *colly.HTMLElement) {
+		imageURL := e.Attr("src")
+		fmt.Println("Image URL:", imageURL)
+		// Download the image
+		downloadImage(imageURL, imageDir)
 	})
 
-	c.OnScraped(func(r *colly.Response) {
-		fmt.Println("Finished scraping", r.Request.URL)
-	})
+	// Visit the URL and scrape the data
+	c.Visit("https://search.brave.com/search?q=ccd+nashik&source=web")
+}
 
-	c.Visit("https://www.wikipedia.org")
-	c.Visit("https://example.com")
+func downloadImage(url, dir string) {
+	fileName := filepath.Base(url)
+	filePath := filepath.Join(dir, fileName)
+	if strings.HasPrefix(url, "//") {
+		url = "https:" + url
+	}
+
+	response, err := http.Get(url)
+	if err != nil {
+		fmt.Println("Failed to download image:", err)
+		return
+	}
+	defer response.Body.Close()
+
+	file, err := os.Create(filePath)
+	if err != nil {
+		fmt.Println("Failed to create file:", err)
+		return
+	}
+	defer file.Close()
+
+	_, err = io.Copy(file, response.Body)
+	if err != nil {
+		fmt.Println("Failed to save image:", err)
+		return
+	}
+
+	fmt.Println("Image downloaded successfully:", filePath)
 }
